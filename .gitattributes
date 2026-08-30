@@ -1,0 +1,11 @@
+# Keep the repository itself LF whatever each machine's core.autocrlf says.
+# Without this a Windows checkout rewrites every file on the way out and the
+# next diff is the entire project.
+* text=auto eol=lf
+
+# Batch files are read by cmd.exe, which wants CRLF.
+*.cmd text eol=crlf
+
+# Workbooks are not text - never try to normalise them.
+*.xlsx binary
+*.xls binary

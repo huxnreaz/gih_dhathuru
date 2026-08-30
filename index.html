@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GIH — Outlets Cover Report</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" id="appMark">GIH</span>
+    <div class="brand-text">
+      <strong id="appTitle">Outlets Cover Report</strong>
+      <div id="serviceToggle" class="svc"></div>
+      <!-- The file the day came from is on the Import & Template tab; it was
+           only clutter under the title. -->
+    </div>
+  </div>
+
+  <div class="topbar-controls">
+    <label class="field">
+      <span>Business date</span>
+      <input type="date" id="bizDate">
+    </label>
+
+    <!-- The uploaded Opera report as a whole, not the rooms in house today. -->
+    <div class="stat" title="Rooms in the uploaded Opera report">
+      <span id="statRooms">0</span><small>rooms</small>
+    </div>
+    <div class="stat" title="Adults in the uploaded Opera report">
+      <span id="statAdults">0</span><small>adults</small>
+    </div>
+    <div class="stat" title="Children in the uploaded Opera report">
+      <span id="statKids">0</span><small>kids</small>
+    </div>
+
+    <div id="connection" class="conn local"></div>
+
+    <!-- Uploading and building both live on the Import & Template tab; they were
+         duplicated here and one of the two was always the wrong place to look. -->
+    <input type="file" id="fileInput" accept=".xlsx,.csv" hidden>
+    <button id="btnPrint" class="btn ghost">Print</button>
+    <button id="btnReset" class="btn ghost danger">Reset</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<main id="view"></main>
+
+<div id="dropzone" class="dropzone"><div>Drop the <b>Opera Report</b> or a <b>GIH Report</b> to load</div></div>
+<div id="toast" class="toast"></div>
+
+<div id="signin" class="signin" hidden>
+  <form class="signin-card" id="signinForm">
+    <h2>Sign in</h2>
+    <p class="muted">Leave the name blank to sign in with the admin password.</p>
+    <label class="cp-field">
+      <span class="cp-label">Name</span>
+      <input type="text" id="signinName" class="cp-input" autocomplete="username"
+             placeholder="blank for admin">
+    </label>
+    <label class="cp-field">
+      <span class="cp-label">Password</span>
+      <input type="password" id="signinPass" class="cp-input" autocomplete="current-password">
+    </label>
+    <p class="signin-error" id="signinError" hidden></p>
+    <div class="signin-actions">
+      <button type="button" class="btn ghost-line" id="signinCancel">Cancel</button>
+      <button type="submit" class="btn accent">Sign in</button>
+    </div>
+  </form>
+</div>
+
+<template id="tpl-import">
+  <section class="pane import">
+    <div class="import-grid">
+      <div class="card">
+        <h1>1 · Upload the Opera report</h1>
+        <p class="muted">
+          The <b>Guest INH — Meal Plan</b> export, straight out of Opera, as <code>.xlsx</code>
+          or <code>.csv</code>. A GIH workbook is accepted too and loaded as-is.
+        </p>
+        <div class="droptarget" id="dropTarget">
+          <div class="droptarget-inner">
+            <b>Drop the file here</b>
+            <span class="muted">or</span>
+            <button class="btn" id="btnPickFile">Choose a file</button>
+          </div>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="chkCheckedIn">
+          <span>Only rooms with status <b>CHECKED IN</b></span>
+        </label>
+      </div>
+
+      <div class="card">
+        <h1>2 · Upload the Dhathuru</h1>
+        <p class="muted">
+          The daily <b>Dhathuru</b> sheet, if you keep one as a file. Room moves,
+          celebrations and host allocations are read out of it onto the
+          <b>Dhathuru</b> tab. Welcome, Farewell and the house totals come from the
+          guest list either way, so this is only for the three hand-kept tables.
+        </p>
+        <div class="droptarget" id="dhaDropTarget">
+          <div class="droptarget-inner">
+            <b>Drop the Dhathuru here</b>
+            <span class="muted">or</span>
+            <button class="btn" id="btnPickDhathuru">Choose a file</button>
+          </div>
+        </div>
+        <input type="file" id="dhathuruInput" accept=".xlsx,.csv" hidden>
+        <div id="dhathuruReport"></div>
+      </div>
+
+      <div class="card">
+        <h1>3 · Build the GIH template</h1>
+        <p class="muted">
+          Writes a workbook with the same nine sheets as <b>GIH Report.xlsx</b>: the
+          <code>Comments</code> table on Sheet1, the eight outlet cover sheets with their
+          XLOOKUP columns, the PACKAGE totals and the covers breakdown, and the four
+          arrival / departure / remarks / banding highlight rules.
+        </p>
+        <button class="btn accent big" id="btnBuildTemplate">Download GIH Report .xlsx</button>
+        <p class="muted" id="btnBuildCount"></p>
+        <p class="muted small">
+          Rooms are typed into column A of an outlet sheet; every other column fills itself in.
+        </p>
+      </div>
+    </div>
+
+    <div class="card report" id="importReport"></div>
+  </section>
+</template>
+
+<template id="tpl-gih">
+  <section class="pane">
+    <div class="pane-head">
+      <h1>Guest In House</h1>
+      <div class="filters">
+        <input type="search" id="gihSearch" placeholder="Search room, guest, comment…">
+        <select id="gihPlan"><option value="">All meal plans</option></select>
+        <select id="gihStatus">
+          <option value="">All rooms</option>
+          <option value="inhouse">In house on date</option>
+          <option value="arr">Arriving on date</option>
+          <option value="dep">Departing on date</option>
+          <option value="rem">Has remarks</option>
+          <option value="dup">Duplicate Room No</option>
+        </select>
+        <button class="btn ghost" id="gihClear" hidden>Clear filters</button>
+        <!-- Each has its own right in the Control Panel, and is hidden without it. -->
+        <button class="btn ghost-line" id="gihFromDha" hidden>Add from Today’s Welcome</button>
+        <button class="btn" id="gihAdd" hidden>Add</button>
+        <button class="btn ghost" id="gihExport">Export CSV</button>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="sw sw-dep"></i>Departure today</span>
+      <span><i class="sw sw-arr"></i>Arrival today</span>
+      <span><i class="sw sw-rem"></i>Remarks</span>
+    </div>
+    <div class="table-wrap">
+      <table class="grid" id="gihTable">
+        <thead>
+          <tr>
+            <th class="c-room">Room No</th><th class="c-rem">Remarks</th><th class="c-guest">Guest Name</th>
+            <th class="c-plan">Plan</th><th class="c-num">Ad</th><th class="c-num">Ch</th>
+            <th class="c-date">Arrival</th><th class="c-date">Departure</th><th class="c-comment">Comment</th>
+            <th class="c-x"></th>
+          </tr>
+          <tr class="filter-row" id="gihColFilters">
+            <th><input type="search" data-col="room" aria-label="Filter Room No"></th>
+            <th><input type="search" data-col="remarks" aria-label="Filter Remarks"></th>
+            <th><input type="search" data-col="guest" aria-label="Filter Guest Name"></th>
+            <th><input type="search" data-col="meal" aria-label="Filter Plan"></th>
+            <th><input type="search" data-col="adults" aria-label="Filter Adults"></th>
+            <th><input type="search" data-col="child" aria-label="Filter Child"></th>
+            <th><input type="search" data-col="arrival" aria-label="Filter Arrival"></th>
+            <th><input type="search" data-col="departure" aria-label="Filter Departure"></th>
+            <th><input type="search" data-col="comment" aria-label="Filter Comment"></th>
+            <th class="c-x"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="rowcount" id="gihCount"></p>
+  </section>
+</template>
+
+<template id="tpl-dhathuru">
+  <section class="pane dhathuru">
+    <div class="pane-head">
+      <!-- Off screen: the tab says Dhathuru and the top bar carries the date, so
+           the heading was saying it a third time. Kept for the printed sheet,
+           which has neither. -->
+      <h1 id="dhaTitle" class="print-only">Dhathuru</h1>
+      <div class="filters">
+        <span class="dha-saved muted" id="dhaSaved"></span>
+        <button class="btn ghost" id="dhaPrint">Print</button>
+        <button class="btn ghost" id="dhaExport">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="dha-body">
+      <!-- The sheet's own header block: ADR, welcome/farewell counts, targets
+           and the week summary. Read from the uploaded Dhathuru. -->
+      <div id="dhaHeader"></div>
+      <!-- The five tables are built from one column definition in app.js, so
+           the markup, the reader and the CSV can never drift apart. -->
+      <div id="dhaTables"></div>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-master">
+  <section class="pane master">
+    <div class="pane-head">
+      <h1 id="masterName">Master — every outlet</h1>
+      <div class="filters">
+        <input type="search" id="masterSearch" placeholder="Search room, guest, outlet, table…">
+        <select id="masterOutlet"><option value="">All outlets</option></select>
+        <button class="btn" id="masterSave">Save to server</button>
+        <button class="btn ghost" id="masterExport">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="outlet-body">
+      <div class="cover-sheet">
+        <div class="legend">
+          <span><i class="sw sw-dep"></i>Departure today</span>
+          <span><i class="sw sw-arr"></i>Arrival today</span>
+          <span><i class="sw sw-rem"></i>Remarks</span>
+          <span><i class="sw sw-miss"></i>Not in house</span>
+          <span id="masterDupNote" class="dup-note" hidden></span>
+        </div>
+        <div class="table-wrap">
+          <table class="grid grid-outlet" id="masterTable">
+            <thead><tr>
+              <th class="c-outlet">Outlet</th><th class="c-room">Room No</th>
+              <th class="c-table">Table #</th><th class="c-rem">Remarks</th>
+              <th class="c-guest">Guest Name</th><th class="c-plan">Plan</th>
+              <th class="c-num">Ad</th><th class="c-num">Ch</th>
+              <th class="c-date">Arrival</th><th class="c-date">Departure</th>
+              <th class="c-comment">Comment</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="rowcount" id="masterCount"></p>
+      </div>
+
+      <aside class="summary" id="masterSummary"></aside>
+    </div>
+  </section>
+</template>
+
+<template id="tpl-outlet">
+  <section class="pane outlet">
+    <div class="pane-head">
+      <h1 id="outletName"></h1>
+      <div class="filters">
+        <div class="seek">
+          <input type="search" id="roomAdd" autocomplete="off"
+                 placeholder="Search room, guest, comment… (or paste a list of rooms)">
+          <div class="seek-results" id="seekResults" hidden></div>
+        </div>
+        <button class="btn" id="btnFillHouse">Fill in-house</button>
+        <button class="btn ghost" id="btnClear">Clear</button>
+        <button class="btn ghost" id="btnExport">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="outlet-body">
+      <div class="cover-sheet">
+        <div class="legend">
+          <span><i class="sw sw-dep"></i>Departure today</span>
+          <span><i class="sw sw-arr"></i>Arrival today</span>
+          <span><i class="sw sw-rem"></i>Remarks</span>
+          <span><i class="sw sw-miss"></i>Not in house</span>
+        </div>
+        <div class="table-wrap">
+          <table class="grid grid-outlet" id="outletTable">
+            <thead><tr>
+              <th class="c-room">Room No</th><th class="c-table">Table #</th><th class="c-rem">Remarks</th>
+              <th class="c-guest">Guest Name</th><th class="c-plan">Plan</th>
+              <th class="c-num">Ad</th><th class="c-num">Ch</th>
+              <th class="c-date">Arrival</th><th class="c-date">Departure</th>
+              <th class="c-comment">Comment</th><th class="c-x"></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <aside class="summary" id="summary"></aside>
+    </div>
+  </section>
+</template>
+
+<script src="assets/api.js"></script>
+<script src="assets/config.js"></script>
+<script src="data/seed.js"></script>
+<script src="assets/xlsx-reader.js"></script>
+<script src="assets/xlsx-writer.js"></script>
+<script src="assets/opera.js"></script>
+<script src="assets/control-panel.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

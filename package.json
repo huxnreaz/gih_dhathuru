@@ -1,0 +1,14 @@
+{
+  "name": "gih-outlets-cover-report",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Outlets cover report: Opera import, shared day state and a GIH template builder, with an admin-controlled backend.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "verify": "node server/verify.js"
+  },
+  "dependencies": {}
+}

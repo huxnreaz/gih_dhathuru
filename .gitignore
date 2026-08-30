@@ -1,0 +1,21 @@
+# The server's own store: password hashes for the admin and every account, the
+# activity log, and a JSON file per business date holding real guest names,
+# rates and comments. It is runtime state, not source - the server recreates
+# what it needs on first run, and GIH_DATA can point it somewhere else entirely.
+server/data/
+
+# Scratch files from testing against a live server.
+_test*
+
+# Not used - the project is deliberately zero-dependency - but here so an
+# absent-minded `npm install` cannot land 40MB in a commit.
+node_modules/
+
+# Editor and OS leavings.
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
