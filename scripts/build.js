@@ -39,6 +39,7 @@ fs.mkdirSync(DIST_DIR, { recursive: true });
 // Copy static assets and entry points
 copyRecursiveSync(path.join(ROOT_DIR, 'index.html'), path.join(DIST_DIR, 'index.html'));
 copyRecursiveSync(path.join(ROOT_DIR, 'assets'), path.join(DIST_DIR, 'assets'));
+copyRecursiveSync(path.join(ROOT_DIR, 'server'), path.join(DIST_DIR, 'server'));
 
 if (fs.existsSync(path.join(ROOT_DIR, 'firebase-applet-config.json'))) {
   copyRecursiveSync(

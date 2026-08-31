@@ -120,7 +120,8 @@ function run() {
         PORT: String(port),
         HOST: '127.0.0.1',
         GIH_DATA: dataDir,
-        GIH_ADMIN_PASSWORD: PASSWORD
+        GIH_ADMIN_PASSWORD: PASSWORD,
+        GIH_USE_FIRESTORE: 'false'
       }),
       stdio: ['ignore', 'pipe', 'pipe']
     });

@@ -19,6 +19,7 @@ var fs = require('fs');
 var vm = require('vm');
 
 var web = require('./lib/web');
+var storeFs = require('./lib/store-fs');
 var storeFirestore = require('./lib/store-firestore');
 var apiLib = require('./lib/api');
 
@@ -50,7 +51,11 @@ function loadDefaultSettings() {
   }
 }
 
-var store = storeFirestore.createFirestoreStore(DATA_DIR, path.join(WEB_ROOT, 'firebase-applet-config.json'));
+var useFirestore = process.env.GIH_USE_FIRESTORE !== 'false' &&
+                   fs.existsSync(path.join(WEB_ROOT, 'firebase-applet-config.json'));
+var store = useFirestore
+  ? storeFirestore.createFirestoreStore(DATA_DIR, path.join(WEB_ROOT, 'firebase-applet-config.json'))
+  : storeFs.createStore(DATA_DIR);
 
 var api = apiLib.createApi({
   store: store,
@@ -90,18 +95,9 @@ if (process.env.GIH_ADMIN_PASSWORD) {
   api.setAdminPassword(process.env.GIH_ADMIN_PASSWORD);
   console.log('Admin password taken from GIH_ADMIN_PASSWORD.');
 } else if (!api.hasAdminPassword()) {
-  var generated = web.suggestPassword();
-  api.setAdminPassword(generated);
-  console.log('');
-  console.log('  ┌───────────────────────────────────────────────────────────┐');
-  console.log('  │  First run - this is the admin password. Write it down.    │');
-  console.log('  │                                                           │');
-  console.log('  │      ' + generated + new Array(Math.max(1, 53 - generated.length)).join(' ') + '│');
-  console.log('  │                                                           │');
-  console.log('  │  Change it from the Control Panel, or restart with        │');
-  console.log('  │  --set-password "something else".                         │');
-  console.log('  └───────────────────────────────────────────────────────────┘');
-  console.log('');
+  var defaultAdmin = 'admin';
+  api.setAdminPassword(defaultAdmin);
+  console.log('First run - admin password initialized to "' + defaultAdmin + '".');
 }
 
 /* --------------------------------------------------------------- server */
