@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node server/server.js",
     "start": "node server/server.js",
-    "build": "node -e \"console.log('Build complete')\"",
+    "build": "node scripts/build.js",
     "verify": "node server/verify.js"
   },
   "dependencies": {

@@ -1,8 +1,8 @@
-/* Firestore Store Adapter for GIH Outlets Cover Report.
+/* Firestore REST Store Adapter for GIH Outlets Cover Report.
  *
  * Implements the synchronous store interface that server/lib/api.js expects,
- * with real-time backing to Google Cloud Firestore using credentials
- * and database configuration from firebase-applet-config.json.
+ * with real-time backing to Google Cloud Firestore via the REST API using
+ * the Firebase apiKey and database configuration from firebase-applet-config.json.
  *
  * Keys map to Firestore documents:
  *   admin            -> collection: 'system', doc: 'admin'
@@ -19,95 +19,144 @@ var storeFs = require('./store-fs');
 
 function createFirestoreStore(rootDir, configPath) {
   var localStore = storeFs.createStore(rootDir);
-  var firestore = null;
-  var isConnected = false;
-
   var appConfig = null;
+  var isConnected = false;
+  var baseUrl = '';
+  var apiKey = '';
+
   try {
     var raw = fs.readFileSync(configPath || path.join(__dirname, '..', '..', 'firebase-applet-config.json'), 'utf8');
     appConfig = JSON.parse(raw);
   } catch (e) {
-    console.warn('[Firestore] No firebase-applet-config.json found, running with local store only.');
+    // Local-only mode if no config
   }
 
-  if (appConfig && appConfig.projectId) {
-    try {
-      var Firestore = require('@google-cloud/firestore').Firestore;
-      var dbOptions = {
-        projectId: appConfig.projectId
-      };
-      if (appConfig.firestoreDatabaseId) {
-        dbOptions.databaseId = appConfig.firestoreDatabaseId;
-      }
-      firestore = new Firestore(dbOptions);
-      isConnected = true;
-      console.log('[Firestore] Connected to project:', appConfig.projectId, 'database:', appConfig.firestoreDatabaseId || '(default)');
-      
-      // Async initial sync from Firestore to local cache on startup
-      syncFromFirestore();
-    } catch (e) {
-      console.warn('[Firestore] Could not initialize Firestore client:', e.message);
-    }
+  if (appConfig && appConfig.projectId && appConfig.apiKey) {
+    var dbId = appConfig.firestoreDatabaseId || '(default)';
+    baseUrl = 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(appConfig.projectId) +
+              '/databases/' + encodeURIComponent(dbId) + '/documents';
+    apiKey = appConfig.apiKey;
+    isConnected = true;
+    console.log('[Firestore] Connected via REST to project:', appConfig.projectId, 'database:', dbId);
+    syncFromFirestore();
   }
 
-  function getDocRef(key) {
-    if (!firestore) return null;
+  function getDocPath(key) {
     var str = String(key || '');
-    if (str === 'admin') return firestore.collection('system').doc('admin');
-    if (str === 'settings') return firestore.collection('system').doc('settings');
-    if (str === 'users') return firestore.collection('system').doc('users');
+    if (str === 'admin') return 'system/admin';
+    if (str === 'settings') return 'system/settings';
+    if (str === 'users') return 'system/users';
     if (str.indexOf('day:') === 0) {
       var date = str.slice(4);
-      return firestore.collection('days').doc(date);
+      return 'days/' + encodeURIComponent(date);
     }
-    return firestore.collection('misc').doc(str.replace(/[^a-zA-Z0-9_-]/g, '_'));
+    return 'misc/' + encodeURIComponent(str.replace(/[^a-zA-Z0-9_-]/g, '_'));
+  }
+
+  function toFirestoreBody(value) {
+    return {
+      fields: {
+        json: { stringValue: JSON.stringify(value) },
+        updatedAt: { stringValue: new Date().toISOString() }
+      }
+    };
+  }
+
+  function fromFirestoreDoc(doc) {
+    if (!doc || !doc.fields) return null;
+    if (doc.fields.json && typeof doc.fields.json.stringValue === 'string') {
+      try {
+        return JSON.parse(doc.fields.json.stringValue);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function restFetch(url, options) {
+    if (typeof fetch === 'function') {
+      return fetch(url, options);
+    }
+    // Fallback for older environments without global fetch
+    return new Promise(function (resolve, reject) {
+      try {
+        var https = require('https');
+        var parsed = new URL(url);
+        var req = https.request({
+          hostname: parsed.hostname,
+          port: parsed.port || 443,
+          path: parsed.pathname + parsed.search,
+          method: (options && options.method) || 'GET',
+          headers: (options && options.headers) || {}
+        }, function (res) {
+          var chunks = [];
+          res.on('data', function (c) { chunks.push(c); });
+          res.on('end', function () {
+            var bodyText = Buffer.concat(chunks).toString('utf8');
+            resolve({
+              ok: res.statusCode >= 200 && res.statusCode < 300,
+              status: res.statusCode,
+              json: function () {
+                try { return Promise.resolve(JSON.parse(bodyText)); }
+                catch (e) { return Promise.resolve(null); }
+              }
+            });
+          });
+        });
+        req.on('error', reject);
+        if (options && options.body) {
+          req.write(options.body);
+        }
+        req.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   function syncFromFirestore() {
-    if (!firestore) return;
-    
+    if (!isConnected) return;
+
     // Sync system docs
     ['admin', 'settings', 'users'].forEach(function (sysKey) {
-      var ref = getDocRef(sysKey);
-      if (!ref) return;
-      ref.get().then(function (snap) {
-        if (snap.exists) {
-          var data = snap.data();
-          localStore.set(sysKey, data);
-        } else {
-          // If Firestore is empty but local exists, seed Firestore
+      var docPath = getDocPath(sysKey);
+      var url = baseUrl + '/' + docPath + '?key=' + encodeURIComponent(apiKey);
+      restFetch(url).then(function (res) {
+        if (res.ok) {
+          return res.json().then(function (doc) {
+            var data = fromFirestoreDoc(doc);
+            if (data !== null) {
+              localStore.set(sysKey, data);
+            }
+          });
+        } else if (res.status === 404) {
+          // Document not in cloud yet, seed if present locally
           var local = localStore.get(sysKey);
           if (local) {
-            ref.set(local).catch(function () {});
+            set(sysKey, local);
           }
         }
-      }).catch(function (err) {
-        console.warn('[Firestore] Error syncing', sysKey, err.message);
-      });
+      }).catch(function () {});
     });
 
-    // Sync days
-    firestore.collection('days').get().then(function (snapshot) {
-      snapshot.forEach(function (doc) {
-        var dayData = doc.data();
-        if (dayData && doc.id) {
-          localStore.set('day:' + doc.id, dayData);
-        }
-      });
-      // Also write any local days to Firestore if not already present
-      localStore.keys('day:').forEach(function (key) {
-        var date = key.slice(4);
-        var ref = firestore.collection('days').doc(date);
-        ref.get().then(function (snap) {
-          if (!snap.exists) {
-            var val = localStore.get(key);
-            if (val) ref.set(val).catch(function () {});
-          }
-        }).catch(function () {});
-      });
-    }).catch(function (err) {
-      console.warn('[Firestore] Error syncing days:', err.message);
-    });
+    // Sync days collection
+    var daysUrl = baseUrl + '/days?pageSize=100&key=' + encodeURIComponent(apiKey);
+    restFetch(daysUrl).then(function (res) {
+      if (res.ok) {
+        return res.json().then(function (body) {
+          var docs = (body && body.documents) || [];
+          docs.forEach(function (doc) {
+            var data = fromFirestoreDoc(doc);
+            var parts = (doc.name || '').split('/');
+            var docId = parts[parts.length - 1];
+            if (data !== null && docId) {
+              localStore.set('day:' + decodeURIComponent(docId), data);
+            }
+          });
+        });
+      }
+    }).catch(function () {});
   }
 
   function get(key) {
@@ -116,25 +165,23 @@ function createFirestoreStore(rootDir, configPath) {
 
   function set(key, value) {
     localStore.set(key, value);
-    if (firestore) {
-      var ref = getDocRef(key);
-      if (ref) {
-        ref.set(value).catch(function (err) {
-          console.warn('[Firestore] Error writing key', key, err.message);
-        });
-      }
+    if (isConnected) {
+      var docPath = getDocPath(key);
+      var url = baseUrl + '/' + docPath + '?key=' + encodeURIComponent(apiKey);
+      restFetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toFirestoreBody(value))
+      }).catch(function () {});
     }
   }
 
   function del(key) {
     localStore.del(key);
-    if (firestore) {
-      var ref = getDocRef(key);
-      if (ref) {
-        ref.delete().catch(function (err) {
-          console.warn('[Firestore] Error deleting key', key, err.message);
-        });
-      }
+    if (isConnected) {
+      var docPath = getDocPath(key);
+      var url = baseUrl + '/' + docPath + '?key=' + encodeURIComponent(apiKey);
+      restFetch(url, { method: 'DELETE' }).catch(function () {});
     }
   }
 
@@ -144,10 +191,13 @@ function createFirestoreStore(rootDir, configPath) {
 
   function append(key, entry) {
     localStore.append(key, entry);
-    if (firestore && key === 'log') {
-      firestore.collection('logs').add(entry).catch(function (err) {
-        console.warn('[Firestore] Error logging entry:', err.message);
-      });
+    if (isConnected && key === 'log') {
+      var url = baseUrl + '/logs?key=' + encodeURIComponent(apiKey);
+      restFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toFirestoreBody(entry))
+      }).catch(function () {});
     }
   }
 
