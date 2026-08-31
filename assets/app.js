@@ -580,6 +580,10 @@
 
   function masterRows() { return compiledRows(masterSources()); }
 
+  function outletConfig(name) {
+    return (conf().outlets || []).filter(function (o) { return o.name === name; })[0] || null;
+  }
+
   // The tab badge: what the sheet holds, or what the guest list would give it.
   function dhathuruCount() {
     var d = state.dhathuru || {};
@@ -1430,6 +1434,25 @@
       aliases: ['farewell no. of guests', 'farewell no of guests'] }
   ];
 
+  function formatOcc(val) {
+    if (val == null) return '';
+    var s = String(val).trim();
+    if (!s) return '';
+    if (s.indexOf('%') !== -1) return s;
+    var num = parseFloat(s);
+    if (isNaN(num)) return s;
+    if (num >= 0 && num <= 1.0) {
+      var pct = num * 100;
+      var rounded = Math.round(pct * 10) / 10;
+      return rounded + '%';
+    }
+    if (num > 1.0 && num <= 100) {
+      var rounded = Math.round(num * 10) / 10;
+      return rounded + '%';
+    }
+    return s;
+  }
+
   // "30-Aug", "30 Aug" and "01 Sep" all have to compare equal to a date column
   // heading, so reduce each to day-plus-month with nothing else in it.
   function dateKey(raw) {
@@ -1644,7 +1667,8 @@
         var tr = el('tr');
         tr.appendChild(el('td', 'c-agent dha-week-label', spec.label));
         values.forEach(function (v, i) {
-          tr.appendChild(el('td', 'c-slot' + (i === weekCol ? ' dha-today' : ''), v));
+          var displayVal = (spec.key === 'occ') ? formatOcc(v) : v;
+          tr.appendChild(el('td', 'c-slot' + (i === weekCol ? ' dha-today' : ''), displayVal));
         });
         body.appendChild(tr);
       });
@@ -2290,7 +2314,7 @@
     function repaint() {
       paintRows();
       summaryBox.innerHTML = '';
-      summaryBox.appendChild(buildSummary(summarise(rows, state.bizDate)));
+      summaryBox.appendChild(buildSummary(summarise(rows, state.bizDate), outletConfig(name)));
       renderTabs();
       save();
     }
@@ -2536,7 +2560,7 @@
 
   /* ------------------------------------------------------- summary render */
 
-  function buildSummary(s) {
+  function buildSummary(s, oCfg) {
     var frag = document.createDocumentFragment();
 
     var kpi = el('div', 'kpi');
@@ -2554,70 +2578,77 @@
       frag.appendChild(w);
     }
 
-    // Package block - the SUMIF grid.
-    var b1 = el('div', 'sum-block');
-    b1.appendChild(el('h2', null, 'Package'));
-    var t1 = el('table', 'sum-table');
-    var head = el('tr');
-    ['Package', 'Adult', 'Kid'].forEach(function (h) { head.appendChild(el('th', null, h)); });
-    var thead = el('thead');
-    thead.appendChild(head);
-    t1.appendChild(thead);
+    var showPkg = !oCfg || oCfg.packageBlock !== false;
+    var showBrk = !oCfg || !!oCfg.breakdown;
 
-    var tb1 = el('tbody');
-    packages().forEach(function (label, i) {
-      var zero = !s.adults[i] && !s.kids[i];
-      var tr = el('tr', zero ? 'zero' : '');
-      tr.appendChild(el('td', null, label));
-      tr.appendChild(el('td', null, s.adults[i]));
-      tr.appendChild(el('td', null, s.kids[i]));
-      tb1.appendChild(tr);
-    });
-    var totRow = el('tr', 'total');
-    totRow.appendChild(el('td', null, 'TOTAL'));
-    totRow.appendChild(el('td', null, s.totalAdults));
-    totRow.appendChild(el('td', null, s.totalKids));
-    tb1.appendChild(totRow);
-    t1.appendChild(tb1);
-    b1.appendChild(t1);
-    frag.appendChild(b1);
+    // Package block - the SUMIF grid.
+    if (showPkg) {
+      var b1 = el('div', 'sum-block');
+      b1.appendChild(el('h2', null, 'Package'));
+      var t1 = el('table', 'sum-table');
+      var head = el('tr');
+      ['Package', 'Adult', 'Kid'].forEach(function (h) { head.appendChild(el('th', null, h)); });
+      var thead = el('thead');
+      thead.appendChild(head);
+      t1.appendChild(thead);
+
+      var tb1 = el('tbody');
+      packages().forEach(function (label, i) {
+        var zero = !s.adults[i] && !s.kids[i];
+        var tr = el('tr', zero ? 'zero' : '');
+        tr.appendChild(el('td', null, label));
+        tr.appendChild(el('td', null, s.adults[i]));
+        tr.appendChild(el('td', null, s.kids[i]));
+        tb1.appendChild(tr);
+      });
+      var totRow = el('tr', 'total');
+      totRow.appendChild(el('td', null, 'TOTAL'));
+      totRow.appendChild(el('td', null, s.totalAdults));
+      totRow.appendChild(el('td', null, s.totalKids));
+      tb1.appendChild(totRow);
+      t1.appendChild(tb1);
+      b1.appendChild(t1);
+      frag.appendChild(b1);
+    }
 
     // Derived block - DINNER PKG / GIH FOOD / GIH BEV / per-plan lines.
-    var b2 = el('div', 'sum-block');
-    b2.appendChild(el('h2', null, 'Covers breakdown'));
-    var t2 = el('table', 'sum-table sum-derived');
-    var tb2 = el('tbody');
+    if (showBrk) {
+      var b2 = el('div', 'sum-block');
+      b2.appendChild(el('h2', null, 'Covers breakdown'));
+      var t2 = el('table', 'sum-table sum-derived');
+      var tb2 = el('tbody');
 
-    s.derived.forEach(function (d) {
-      if (d.gap) {
-        var sp = el('tr');
-        var td = el('td', null, ' ');
-        td.colSpan = 2;
-        td.style.borderBottom = '0';
-        sp.appendChild(td);
-        tb2.appendChild(sp);
-        return;
-      }
-      var isZero = !d.adults && !d.kids;
-      var tr = el('tr', (d.total ? 'total ' : '') + (isZero && d.blank ? 'zero' : ''));
-      tr.appendChild(el('td', null, d.label + ':'));
+      s.derived.forEach(function (d) {
+        if (d.gap) {
+          var sp = el('tr');
+          var td = el('td', null, ' ');
+          td.colSpan = 2;
+          td.style.borderBottom = '0';
+          sp.appendChild(td);
+          tb2.appendChild(sp);
+          return;
+        }
+        var isZero = !d.adults && !d.kids;
+        var tr = el('tr', (d.total ? 'total ' : '') + (isZero && d.blank ? 'zero' : ''));
+        tr.appendChild(el('td', null, d.label + ':'));
 
-      var text;
-      if (d.plain) {
-        text = String(d.adults);
-      } else {
-        var parts = [];
-        if (d.adults) parts.push(d.adults + ' Adults');
-        if (d.kids) parts.push(d.kids + ' Kids');
-        text = parts.length ? parts.join(' / ') : (d.blank ? '—' : '0');
-      }
-      tr.appendChild(el('td', null, text));
-      tb2.appendChild(tr);
-    });
+        var text;
+        if (d.plain) {
+          text = String(d.adults);
+        } else {
+          var parts = [];
+          if (d.adults) parts.push(d.adults + ' Adults');
+          if (d.kids) parts.push(d.kids + ' Kids');
+          text = parts.length ? parts.join(' / ') : (d.blank ? '—' : '0');
+        }
+        tr.appendChild(el('td', null, text));
+        tb2.appendChild(tr);
+      });
 
-    t2.appendChild(tb2);
-    b2.appendChild(t2);
-    frag.appendChild(b2);
+      t2.appendChild(tb2);
+      b2.appendChild(t2);
+      frag.appendChild(b2);
+    }
 
     return frag;
   }
@@ -2661,6 +2692,9 @@
   }
 
   function exportOutletCsv(name, rows) {
+    var oCfg = outletConfig(name);
+    var showPkg = !oCfg || oCfg.packageBlock !== false;
+    var showBrk = !oCfg || !!oCfg.breakdown;
     var s = summarise(rows, state.bizDate);
     var lines = [
       csvCell(name + ' - Cover Report - ' + state.bizDate),
@@ -2674,20 +2708,24 @@
         r.arrival, r.departure, r.comment].map(csvCell).join(','));
     });
 
-    lines.push('', ['PACKAGE', 'ADULT', 'KID'].join(','));
-    packages().forEach(function (label, i) {
-      lines.push([label, s.adults[i], s.kids[i]].map(csvCell).join(','));
-    });
-    lines.push(['TOTAL', s.totalAdults, s.totalKids].join(','));
+    if (showPkg) {
+      lines.push('', ['PACKAGE', 'ADULT', 'KID'].join(','));
+      packages().forEach(function (label, i) {
+        lines.push([label, s.adults[i], s.kids[i]].map(csvCell).join(','));
+      });
+      lines.push(['TOTAL', s.totalAdults, s.totalKids].join(','));
+    }
 
-    lines.push('');
-    s.derived.forEach(function (d) {
-      if (d.gap) return lines.push('');
-      var val = d.plain ? d.adults
-        : [d.adults ? d.adults + ' Adults' : '', d.kids ? d.kids + ' Kids' : '']
-          .filter(Boolean).join(' / ');
-      lines.push([d.label + ':', val].map(csvCell).join(','));
-    });
+    if (showBrk) {
+      lines.push('');
+      s.derived.forEach(function (d) {
+        if (d.gap) return lines.push('');
+        var val = d.plain ? d.adults
+          : [d.adults ? d.adults + ' Adults' : '', d.kids ? d.kids + ' Kids' : '']
+            .filter(Boolean).join(' / ');
+        lines.push([d.label + ':', val].map(csvCell).join(','));
+      });
+    }
 
     download(safeName(name) + '_' + state.bizDate + '.csv', lines.join('\r\n'));
     toast('Exported ' + rows.length + ' covers');
@@ -3029,7 +3067,8 @@
           var spec = DHA_WEEK_ROWS[s];
           if (spec.aliases.indexOf(head) === -1) continue;
           out.rows[spec.key] = cols.map(function (at) {
-            return String(line[at] == null ? '' : line[at]).trim();
+            var raw = String(line[at] == null ? '' : line[at]).trim();
+            return spec.key === 'occ' ? formatOcc(raw) : raw;
           });
           found++;
           break;
@@ -3591,40 +3630,109 @@
   // A proper form rather than chained browser prompts: two accounts' worth of
   // fields, one error line, and Enter submits.
   function promptLogin() {
-    var box = $('#signin');
-    var name = $('#signinName');
-    var pass = $('#signinPass');
-    var err = $('#signinError');
+    openAuthLanding();
+  }
+
+  /* -------------------------------------------------- auth landing page */
+
+  var authCurrentRole = 'admin'; // 'admin' | 'user'
+
+  function openAuthLanding() {
+    var landing = $('#authLanding');
+    if (!landing) return;
+
+    var prop = conf().property || {};
+    if ($('#authLogoMark')) $('#authLogoMark').textContent = prop.name || 'GIH';
+    if ($('#authAppTitle')) $('#authAppTitle').textContent = (prop.name ? prop.name + ' — ' : '') + (prop.reportTitle || 'Outlets Cover Report');
+
+    var tabAdmin = $('#tabRoleAdmin');
+    var tabUser = $('#tabRoleUser');
+    var fieldUser = $('#authFieldUser');
+    var passLabel = $('#authPassLabel');
+    var hint = $('#authHintText');
+    var submitBtn = $('#authSubmitBtn');
+    var err = $('#authError');
+    var passInput = $('#authPassword');
+    var userInput = $('#authUserName');
 
     err.hidden = true;
-    pass.value = '';
-    box.hidden = false;
-    setTimeout(function () { name.focus(); name.select(); }, 0);
+    passInput.value = '';
+    userInput.value = '';
 
-    var close = function () {
-      box.hidden = true;
-      pass.value = '';
+    function setRole(role) {
+      authCurrentRole = role;
+      if (role === 'admin') {
+        tabAdmin.classList.add('active');
+        tabUser.classList.remove('active');
+        fieldUser.style.display = 'none';
+        userInput.required = false;
+        passLabel.textContent = 'Admin Password';
+        passInput.placeholder = 'Enter admin password';
+        hint.innerHTML = 'Default password for new installations is <code>admin</code> (or your configured admin password).';
+        submitBtn.textContent = 'Sign in as Admin';
+      } else {
+        tabUser.classList.add('active');
+        tabAdmin.classList.remove('active');
+        fieldUser.style.display = 'flex';
+        userInput.required = true;
+        passLabel.textContent = 'User Password';
+        passInput.placeholder = 'Enter user password';
+        hint.innerHTML = 'Sign in with your assigned staff username and password created in the Control Panel.';
+        submitBtn.textContent = 'Sign in as User';
+      }
       err.hidden = true;
-    };
+    }
 
-    $('#signinCancel').onclick = close;
-    box.onmousedown = function (e) { if (e.target === box) close(); };
-    box.onkeydown = function (e) { if (e.key === 'Escape') close(); };
+    tabAdmin.onclick = function () { setRole('admin'); setTimeout(function () { passInput.focus(); }, 50); };
+    tabUser.onclick = function () { setRole('user'); setTimeout(function () { userInput.focus(); }, 50); };
 
-    $('#signinForm').onsubmit = function (e) {
+    setRole(authCurrentRole);
+    landing.hidden = false;
+
+    // Focus on the active role input
+    setTimeout(function () {
+      if (authCurrentRole === 'user') userInput.focus();
+      else passInput.focus();
+    }, 60);
+
+    var skipBtn = $('#authSkipBtn');
+    if (skipBtn) {
+      skipBtn.onclick = function () {
+        landing.hidden = true;
+      };
+    }
+
+    $('#authLandingForm').onsubmit = function (e) {
       e.preventDefault();
       err.hidden = true;
-      window.GihApi.login(pass.value, name.value.trim()).then(function (res) {
+
+      var password = passInput.value;
+      var username = authCurrentRole === 'user' ? userInput.value.trim() : '';
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in...';
+
+      window.GihApi.login(password, username).then(function (res) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = authCurrentRole === 'admin' ? 'Sign in as Admin' : 'Sign in as User';
+
         if (!res.ok) {
-          err.textContent = res.error;
+          err.textContent = res.error || 'Invalid credentials.';
           err.hidden = false;
-          pass.value = '';
-          pass.focus();
+          passInput.value = '';
+          passInput.focus();
           return;
         }
-        close();
-        toast('Signed in as ' + (res.body.name || 'admin') + '.');
+
+        landing.hidden = true;
+        toast('Signed in as ' + (res.body.name || 'admin') + '. Welcome to the project!');
+        render();
         connect(false);
+      }).catch(function (e) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = authCurrentRole === 'admin' ? 'Sign in as Admin' : 'Sign in as User';
+        err.textContent = 'Connection error: ' + (e.message || e);
+        err.hidden = false;
       });
     };
   }
@@ -3633,6 +3741,7 @@
     window.GihApi.logout().then(function () {
       toast('Signed out.');
       render();
+      openAuthLanding();
     });
   }
 
@@ -3711,5 +3820,12 @@
   render();
 
   // The local view is already on screen; the server only ever improves on it.
-  connect(false);
+  connect(false).then(function () {
+    if (!window.GihApi.isSignedIn()) {
+      openAuthLanding();
+    } else {
+      var landing = $('#authLanding');
+      if (landing) landing.hidden = true;
+    }
+  });
 })();

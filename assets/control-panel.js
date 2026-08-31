@@ -80,6 +80,34 @@
     return wrap;
   }
 
+  function toggleSwitch(checked, onCommit, title) {
+    var wrap = el('label', 'cp-toggle' + (checked ? ' is-on' : ' is-off'));
+    wrap.title = (title ? title + ': ' : '') + (checked ? 'ON (Click to disable)' : 'OFF (Click to enable)');
+    var i = el('input', 'cp-toggle-input');
+    i.type = 'checkbox';
+    i.checked = !!checked;
+    if (title) i.setAttribute('aria-label', title);
+
+    var track = el('span', 'cp-toggle-track');
+    var thumb = el('span', 'cp-toggle-thumb');
+    var text = el('span', 'cp-toggle-text', checked ? 'ON' : 'OFF');
+
+    track.appendChild(thumb);
+    track.appendChild(text);
+    wrap.appendChild(i);
+    wrap.appendChild(track);
+
+    i.onchange = function () {
+      var next = i.checked;
+      wrap.classList.toggle('is-on', next);
+      wrap.classList.toggle('is-off', !next);
+      text.textContent = next ? 'ON' : 'OFF';
+      wrap.title = (title ? title + ': ' : '') + (next ? 'ON (Click to disable)' : 'OFF (Click to enable)');
+      onCommit(next);
+    };
+    return wrap;
+  }
+
   function button(label, cls, onClick) {
     var b = el('button', 'btn ' + (cls || ''), label);
     b.type = 'button';
@@ -202,12 +230,19 @@
     var box = el('div');
     box.appendChild(el('p', 'cp-intro',
       'One tab in this app and one sheet in the generated workbook per outlet, ' +
-      'in this order. "Rows" is how many rooms staff can type into that sheet.'));
+      'in this order. "Rows" is how many rooms staff can type into that sheet. ' +
+      'Use the ON/OFF switches below to individually toggle the Package Block (SUMIF grid) and Covers Breakdown for each outlet.'));
 
     var table = el('table', 'cp-table');
     var head = el('tr');
-    ['', 'Outlet', 'Rows', 'Package block', 'Covers breakdown', 'Gap', 'Rolls up from', '']
-      .forEach(function (h) { head.appendChild(el('th', null, h)); });
+    ['', 'Outlet', 'Rows', 'Package block', 'Covers breakdown', 'Gap', 'Rolls up from', 'Action']
+      .forEach(function (h) {
+        var th = el('th', null, h);
+        if (h === 'Package block' || h === 'Covers breakdown' || h === 'Action') {
+          th.className = 'cp-mid';
+        }
+        head.appendChild(th);
+      });
     var thead = el('thead');
     thead.appendChild(head);
     table.appendChild(thead);
@@ -257,19 +292,17 @@
       tr.appendChild(rowsCell);
 
       var pkgCell = el('td', 'cp-mid');
-      pkgCell.appendChild(checkbox('', o.packageBlock !== false, function (on) {
+      pkgCell.appendChild(toggleSwitch(o.packageBlock !== false, function (on) {
         o.packageBlock = on;
-        if (!on) o.breakdown = false;
         commit();
-      }));
+      }, o.name + ' - Package block'));
       tr.appendChild(pkgCell);
 
       var brkCell = el('td', 'cp-mid');
-      brkCell.appendChild(checkbox('', o.breakdown, function (on) {
+      brkCell.appendChild(toggleSwitch(!!o.breakdown, function (on) {
         o.breakdown = on;
-        if (on) o.packageBlock = true;
         commit();
-      }));
+      }, o.name + ' - Covers breakdown'));
       tr.appendChild(brkCell);
 
       var gapCell = el('td');
@@ -282,17 +315,29 @@
       tr.appendChild(rollCell);
 
       var del = el('td', 'cp-mid');
-      del.appendChild(iconButton('✕', 'Remove this outlet', function () {
-        if (!confirm('Remove "' + o.name + '"? Its seating in this app is cleared too.')) return;
+      var delBtn = el('button', 'cp-btn-del', '✕ Delete');
+      delBtn.type = 'button';
+      delBtn.title = cfg.outlets.length <= 1
+        ? 'At least one outlet is required'
+        : 'Delete outlet "' + o.name + '"';
+      delBtn.disabled = cfg.outlets.length <= 1;
+      delBtn.onclick = function () {
+        if (!confirm('Are you sure you want to delete the outlet "' + o.name + '"?\n\nThis will remove the outlet tab, its configuration, and clear its seating records.')) return;
+        var nameToRemove = o.name;
         cfg.outlets.splice(i, 1);
         cfg.outlets.forEach(function (x) {
           if (x.rollupFrom) {
-            x.rollupFrom = x.rollupFrom.filter(function (s) { return s !== o.name; });
+            x.rollupFrom = x.rollupFrom.filter(function (s) { return s !== nameToRemove; });
           }
         });
-        api.dropOutlet(o.name);
+        if (cfg.master && cfg.master.sources) {
+          cfg.master.sources = cfg.master.sources.filter(function (s) { return s !== nameToRemove; });
+        }
+        api.dropOutlet(nameToRemove);
         commit();
-      }, cfg.outlets.length <= 1));
+        api.toast('Removed outlet "' + nameToRemove + '".');
+      };
+      del.appendChild(delBtn);
       tr.appendChild(del);
 
       body.appendChild(tr);
@@ -300,15 +345,60 @@
     table.appendChild(body);
     box.appendChild(el('div', 'cp-scroll')).appendChild(table);
 
-    box.appendChild(button('Add outlet', 'small', function () {
-      var n = 1;
-      while (cfg.outlets.some(function (o) { return o.name === 'New outlet ' + n; })) n++;
+    var addBar = el('div', 'cp-buttons');
+    addBar.style.display = 'flex';
+    addBar.style.alignItems = 'center';
+    addBar.style.gap = '8px';
+    addBar.style.flexWrap = 'wrap';
+    addBar.style.margin = '4px 0 16px';
+
+    var newNameIn = el('input', 'cp-input');
+    newNameIn.type = 'text';
+    newNameIn.placeholder = 'New outlet name';
+    newNameIn.style.maxWidth = '220px';
+
+    var newCapIn = el('input', 'cp-input');
+    newCapIn.type = 'number';
+    newCapIn.value = '99';
+    newCapIn.min = '1';
+    newCapIn.max = '5000';
+    newCapIn.title = 'Capacity (rows)';
+    newCapIn.style.width = '70px';
+
+    var addBtn = button('+ Add outlet', 'small', function () {
+      var typed = newNameIn.value.trim();
+      if (!typed) {
+        var n = 1;
+        while (cfg.outlets.some(function (o) { return o.name === 'New outlet ' + n; })) n++;
+        typed = 'New outlet ' + n;
+      }
+      var problem = sheetNameProblem(typed);
+      if (problem) {
+        api.toast(problem, true);
+        return;
+      }
+      if (cfg.outlets.some(function (o) { return o.name.toLowerCase() === typed.toLowerCase(); })) {
+        api.toast('An outlet called "' + typed + '" already exists.', true);
+        return;
+      }
+      var cap = parseInt(newCapIn.value, 10);
+      if (isNaN(cap) || cap < 1) cap = 99;
       cfg.outlets.push({
-        name: 'New outlet ' + n, capacity: 99, packageBlock: true,
-        breakdown: true, packageGap: 2
+        name: typed,
+        capacity: cap,
+        packageBlock: true,
+        breakdown: true,
+        packageGap: 2
       });
+      newNameIn.value = '';
       commit();
-    }));
+      api.toast('Added outlet "' + typed + '".');
+    });
+
+    addBar.appendChild(newNameIn);
+    addBar.appendChild(newCapIn);
+    addBar.appendChild(addBtn);
+    box.appendChild(addBar);
 
     box.appendChild(el('h3', null, 'What the Master tab compiles'));
     cfg.master = cfg.master || { sources: [] };
@@ -439,12 +529,12 @@
       'the same figure appears in the summary panel, the CSV export and the ' +
       'generated workbook.'));
 
-    // The same outlets run both sittings, so the service is a switch rather
-    // than two sets of lines to keep in step.
+    // The same outlets run all sittings, so the service is a switch rather
+    // than separate sets of lines to keep in step.
     var svc = el('div', 'cp-service');
     svc.appendChild(el('span', 'cp-label', 'Service'));
     var group = el('div', 'cp-segmented');
-    ['LUNCH', 'DINNER'].forEach(function (option) {
+    (window.GihConfig.SERVICES || ['BREAKFAST', 'LUNCH', 'DINNER']).forEach(function (option) {
       var on = String(cfg.service || 'DINNER').toUpperCase() === option;
       var b = el('button', 'cp-seg' + (on ? ' on' : ''), option.charAt(0) + option.slice(1).toLowerCase());
       b.type = 'button';
@@ -456,20 +546,25 @@
       'Each service has its own breakdown — you are editing the ' +
       String(cfg.service || 'DINNER').toLowerCase() + ' one below. Lines marked ' +
       '"Name follows service" also take their name from this switch, so ' +
-      '"DINNER PKG" reads "LUNCH PKG" everywhere the figure appears.'));
+      '"DINNER PKG" reads "BREAKFAST PKG" or "LUNCH PKG" everywhere the figure appears.'));
     box.appendChild(svc);
 
-    var otherService = String(cfg.service || 'DINNER').toUpperCase() === 'LUNCH'
-      ? 'DINNER' : 'LUNCH';
+    var currentService = String(cfg.service || 'DINNER').toUpperCase();
+    var otherServices = (window.GihConfig.SERVICES || ['BREAKFAST', 'LUNCH', 'DINNER'])
+      .filter(function (s) { return s !== currentService; });
+
     var copyRow = el('div', 'cp-buttons');
-    copyRow.appendChild(button('Copy this breakdown to ' + otherService.toLowerCase(),
-      'small ghost-line', function () {
-        if (!confirm('Replace the ' + otherService.toLowerCase() +
-          ' breakdown with this one?')) return;
-        cfg.breakdowns[otherService] = JSON.parse(JSON.stringify(lines));
-        commit();
-        api.toast('Copied to ' + otherService.toLowerCase() + '.');
-      }));
+    otherServices.forEach(function (targetSvc) {
+      copyRow.appendChild(button('Copy this breakdown to ' + targetSvc.toLowerCase(),
+        'small ghost-line', function () {
+          if (!confirm('Replace the ' + targetSvc.toLowerCase() +
+            ' breakdown with this current ' + currentService.toLowerCase() + ' breakdown?')) return;
+          cfg.breakdowns = cfg.breakdowns || {};
+          cfg.breakdowns[targetSvc] = JSON.parse(JSON.stringify(lines));
+          commit();
+          api.toast('Copied to ' + targetSvc.toLowerCase() + '.');
+        }));
+    });
     box.appendChild(copyRow);
 
     lines.forEach(function (d, i) {

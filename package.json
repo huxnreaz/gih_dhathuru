@@ -7,8 +7,13 @@
     "node": ">=18"
   },
   "scripts": {
+    "dev": "node server/server.js",
     "start": "node server/server.js",
+    "build": "node -e \"console.log('Build complete')\"",
     "verify": "node server/verify.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@google-cloud/firestore": "^9.0.0",
+    "firebase": "^12.18.0"
+  }
 }

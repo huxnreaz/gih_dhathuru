@@ -74,6 +74,49 @@
   </form>
 </div>
 
+<!-- Authentication Landing Homepage (Admin & Staff/User Login) -->
+<div id="authLanding" class="auth-landing">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-logo-badge" id="authLogoMark">VFAR</div>
+      <div class="auth-title-wrap">
+        <h1 id="authAppTitle">VFAR — Guest In House List</h1>
+        <p>Sign in to access your dashboard, seating, and reports</p>
+      </div>
+    </div>
+
+    <div class="auth-role-tabs">
+      <button type="button" class="auth-role-tab active" id="tabRoleAdmin">Admin Sign In</button>
+      <button type="button" class="auth-role-tab" id="tabRoleUser">Staff / User Sign In</button>
+    </div>
+
+    <form class="auth-form" id="authLandingForm">
+      <div class="auth-field" id="authFieldUser" style="display:none">
+        <label class="auth-label" for="authUserName">Username</label>
+        <input type="text" id="authUserName" class="auth-input" autocomplete="username" placeholder="e.g. host1, frontdesk">
+      </div>
+
+      <div class="auth-field">
+        <label class="auth-label" for="authPassword" id="authPassLabel">Admin Password</label>
+        <input type="password" id="authPassword" class="auth-input" autocomplete="current-password" placeholder="Enter password" required>
+        <div class="auth-hint" id="authHintText">Default password for new installations is <code>admin</code> (or your custom admin password).</div>
+      </div>
+
+      <div class="auth-error" id="authError" hidden></div>
+
+      <button type="submit" class="auth-btn-primary" id="authSubmitBtn">Sign in as Admin</button>
+    </form>
+
+    <div class="auth-footer">
+      <div class="auth-db-status">
+        <span class="auth-db-dot"></span>
+        <span>Firebase Firestore Persistent Storage Active</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <template id="tpl-import">
   <section class="pane import">
     <div class="import-grid">

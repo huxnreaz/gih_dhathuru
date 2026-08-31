@@ -19,12 +19,12 @@ var fs = require('fs');
 var vm = require('vm');
 
 var web = require('./lib/web');
-var storeFs = require('./lib/store-fs');
+var storeFirestore = require('./lib/store-firestore');
 var apiLib = require('./lib/api');
 
 var WEB_ROOT = path.resolve(__dirname, '..');
 var DATA_DIR = process.env.GIH_DATA || path.join(__dirname, 'data');
-var PORT = parseInt(process.env.PORT, 10) || 8080;
+var PORT = parseInt(process.env.PORT, 10) || 3000;
 var HOST = process.env.HOST || '0.0.0.0';
 var BODY_LIMIT = 24 * 1024 * 1024;   // a big GIH list is a few MB of JSON
 
@@ -50,7 +50,7 @@ function loadDefaultSettings() {
   }
 }
 
-var store = storeFs.createStore(DATA_DIR);
+var store = storeFirestore.createFirestoreStore(DATA_DIR, path.join(WEB_ROOT, 'firebase-applet-config.json'));
 
 var api = apiLib.createApi({
   store: store,
@@ -159,6 +159,7 @@ var server = http.createServer(function (req, res) {
         query: parseQuery(url),
         body: body,
         cookies: web.parseCookies(req.headers.cookie),
+        headers: req.headers,
         ip: clientIp(req)
       });
     } catch (e) {

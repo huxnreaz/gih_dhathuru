@@ -200,6 +200,13 @@
 
     function sessionFrom(req) {
       var t = (req.cookies || {})[SESSION_COOKIE];
+      if (!t && req.headers) {
+        var auth = req.headers['authorization'] || req.headers['x-gih-token'];
+        if (auth) {
+          if (auth.indexOf('Bearer ') === 0) t = auth.slice(7).trim();
+          else t = String(auth).trim();
+        }
+      }
       if (!t) return null;
       var s = sessions[t];
       if (!s) return null;
@@ -312,7 +319,8 @@
         value: value,
         maxAge: maxAgeSeconds,
         httpOnly: true,
-        sameSite: 'Lax',
+        sameSite: 'None',
+        secure: true,
         path: '/'
       };
     }
@@ -457,7 +465,7 @@
           }
           delete loginTries[ip];
           var t = startSession('admin', null, 'admin');
-          var res = ok({ admin: true, who: 'admin', name: 'admin',
+          var res = ok({ token: t, admin: true, who: 'admin', name: 'admin',
             rights: allRights(true), hiddenTabs: [] });
           res.cookie = sessionCookie(t, Math.floor(SESSION_MS / 1000));
           record({ cookies: { gih_session: t }, body: body }, 'signed in as admin');
@@ -472,6 +480,7 @@
         delete loginTries[ip];
         var ut = startSession('user', user.id, user.name);
         var ures = ok({
+          token: ut,
           admin: false, who: 'user', name: user.name,
           rights: actorRightsFor(user), hiddenTabs: pickTabs(user.hiddenTabs)
         });

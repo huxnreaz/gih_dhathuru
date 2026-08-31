@@ -1,0 +1,6 @@
+{
+  "name": "GIH - Outlets Cover Report",
+  "description": "Outlets cover report with Opera import, shared day state, Dhathuru sheet management, and GIH template builder.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

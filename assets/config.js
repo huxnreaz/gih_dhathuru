@@ -56,7 +56,7 @@
     },
 
     // Which service the cover sheets are for. Lines flagged `serviceLine` take
-    // their name from this, so the same setup covers both sittings.
+    // their name from this, so the same setup covers all sittings.
     service: 'DINNER',
 
     ui: {
@@ -97,7 +97,7 @@
         clear: false,      // empty a whole outlet in one go
         remarks: true,     // write the Remarks column
         master: false,     // save a Master snapshot to the server
-        service: false,    // flip Lunch/Dinner
+        service: false,    // flip Breakfast/Lunch/Dinner
         bizDate: false,    // move the business date
         guestList: false,  // correct any other guest-list column
         gihAdd: false,     // put a blank line on the guest list
@@ -115,11 +115,12 @@
     // gapBefore   blank rows above this line, both on screen and in the workbook
     // plain       print a bare number instead of "n Adults" / "n Kids"
     // adultsOnly  no Kids figure for this line
-    // serviceLine the leading LUNCH/DINNER in the label follows the `service`
-    //             setting, so one line covers both sittings
-    // One breakdown per service. Both start the same; an admin can take them
-    // apart, because lunch and dinner do not always count the same way.
+    // serviceLine the leading LUNCH/DINNER/BREAKFAST in the label follows the `service`
+    //             setting, so one line covers all sittings
+    // One breakdown per service. All start the same; an admin can take them
+    // apart, because breakfast, lunch and dinner do not always count the same way.
     breakdowns: {
+      BREAKFAST: standardBreakdown(),
       DINNER: standardBreakdown(),
       LUNCH: standardBreakdown()
     },
@@ -163,12 +164,27 @@
     var out = clone(DEFAULTS);
     if (!saved || typeof saved !== 'object') return out;
 
-    // Before the Lunch/Dinner split there was one list. Carry it into both
+    // Before the Lunch/Dinner/Breakfast split there was one list. Carry it into all
     // services rather than quietly reverting somebody's breakdown to stock.
     if (Array.isArray(saved.derived) && !saved.breakdowns) {
       saved = clone(saved);
-      saved.breakdowns = { DINNER: clone(saved.derived), LUNCH: clone(saved.derived) };
+      saved.breakdowns = {
+        BREAKFAST: clone(saved.derived),
+        DINNER: clone(saved.derived),
+        LUNCH: clone(saved.derived)
+      };
       delete saved.derived;
+    }
+    if (saved.breakdowns && typeof saved.breakdowns === 'object') {
+      if (!saved.breakdowns.BREAKFAST) {
+        saved.breakdowns.BREAKFAST = clone(saved.breakdowns.DINNER || saved.breakdowns.LUNCH || standardBreakdown());
+      }
+      if (!saved.breakdowns.DINNER) {
+        saved.breakdowns.DINNER = clone(saved.breakdowns.LUNCH || standardBreakdown());
+      }
+      if (!saved.breakdowns.LUNCH) {
+        saved.breakdowns.LUNCH = clone(saved.breakdowns.DINNER || standardBreakdown());
+      }
     }
     Object.keys(out).forEach(function (k) {
       if (saved[k] === undefined) return;
@@ -242,8 +258,8 @@
     return JSON.stringify(a) === JSON.stringify(b);
   }
 
-  // "DINNER PKG" with the toggle on LUNCH reads "LUNCH PKG". A label with no
-  // service word in it simply gains one.
+  // "DINNER PKG" with the toggle on LUNCH reads "LUNCH PKG", and with BREAKFAST reads "BREAKFAST PKG".
+  // A label with no service word in it simply gains one.
   function serviceLabel(label, serviceLine) {
     var name = String(label || '');
     if (!serviceLine) return name;
@@ -257,7 +273,7 @@
   // The breakdown in force for the service that is switched on.
   function breakdown() {
     var byService = current.breakdowns || {};
-    return byService[service()] || byService.DINNER || [];
+    return byService[service()] || byService.DINNER || byService.BREAKFAST || [];
   }
 
   window.GihConfig = {
@@ -265,7 +281,7 @@
     serviceLabel: serviceLabel,
     service: service,
     breakdown: breakdown,
-    SERVICES: ['LUNCH', 'DINNER'],
+    SERVICES: ['BREAKFAST', 'LUNCH', 'DINNER'],
     RIGHTS: [
       { key: 'seat', label: 'Seat rooms and assign tables' },
       { key: 'clear', label: 'Clear a whole outlet' },
@@ -274,7 +290,7 @@
       { key: 'gihAdd', label: 'Add a blank line to the guest list' },
       { key: 'gihWelcome', label: 'Add to the guest list from Today’s Welcome' },
       { key: 'bizDate', label: 'Change the business date' },
-      { key: 'service', label: 'Switch Lunch / Dinner' },
+      { key: 'service', label: 'Switch Breakfast / Lunch / Dinner' },
       { key: 'master', label: 'Save a Master snapshot to the server' },
       { key: 'importData', label: 'Upload an Opera report' },
       { key: 'dhathuru', label: 'Edit the Dhathuru sheet' },

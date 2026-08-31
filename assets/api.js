@@ -56,9 +56,21 @@
     notify();
   }
 
+  var TOKEN_KEY = 'gih_session_token';
+  function getStoredToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+  }
+  function setStoredToken(t) {
+    try {
+      if (t) localStorage.setItem(TOKEN_KEY, t);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch (e) {}
+  }
+
   // Applies whatever the server said about who we are. Any reply may carry it.
   function adoptIdentity(body) {
     if (!body || typeof body !== 'object') return;
+    if (body.token) setStoredToken(body.token);
     var changed = false;
 
     if (typeof body.admin === 'boolean' && state.admin !== body.admin) {
@@ -99,6 +111,10 @@
       credentials: 'same-origin',
       headers: { 'Accept': 'application/json' }
     };
+    var token = getStoredToken();
+    if (token) {
+      init.headers['Authorization'] = 'Bearer ' + token;
+    }
     if (controller) init.signal = controller.signal;
     if (body !== undefined) {
       init.headers['Content-Type'] = 'application/json';
@@ -185,6 +201,7 @@
     },
 
     logout: function () {
+      setStoredToken('');
       return request('POST', 'logout').then(function (res) {
         state.admin = false;
         state.who = 'anonymous';

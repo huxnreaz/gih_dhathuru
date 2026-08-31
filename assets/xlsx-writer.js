@@ -223,7 +223,7 @@
       var spec = {
         name: o.name,
         lastRow: lastRow,
-        breakdown: !!o.breakdown && o.packageBlock !== false
+        breakdown: !!o.breakdown
       };
       if (o.packageBlock !== false) {
         spec.pkgHeader = lastRow + (o.packageGap == null ? 2 : o.packageGap);

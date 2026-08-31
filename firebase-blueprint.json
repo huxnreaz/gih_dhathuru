@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "Day": {
+      "title": "Day",
+      "description": "Daily cover and outlet report record",
+      "type": "object",
+      "properties": {
+        "bizDate": { "type": "string" },
+        "data": { "type": "array" },
+        "source": { "type": "string" },
+        "lastImport": { "type": "object" },
+        "outlets": { "type": "object" },
+        "outletRevisions": { "type": "object" },
+        "dhathuru": { "type": "object" },
+        "revision": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["bizDate", "revision"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Application settings and access configuration",
+      "type": "object",
+      "properties": {
+        "settings": { "type": "object" },
+        "revision": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["settings", "revision"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Audit log entry",
+      "type": "object",
+      "properties": {
+        "at": { "type": "number" },
+        "who": { "type": "string" },
+        "station": { "type": "string" },
+        "action": { "type": "string" },
+        "detail": { "type": "object" }
+      },
+      "required": ["at", "action"]
+    }
+  },
+  "firestore": {
+    "days/{dayId}": {
+      "schema": "Day",
+      "description": "Daily outlets report and seating state"
+    },
+    "system/{docId}": {
+      "schema": "Settings",
+      "description": "System documents (settings, users, admin)"
+    },
+    "logs/{logId}": {
+      "schema": "Log",
+      "description": "Audit trail log records"
+    }
+  }
+}
